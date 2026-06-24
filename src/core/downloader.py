@@ -45,8 +45,10 @@ class VideoDownloader:
 
         cookies_file = '/tmp/yt_cookies.txt'
         has_cookies = os.path.exists(cookies_file)
-        client = 'web' if has_cookies else 'ios+tv_embedded'
-        print(f"[yt-dlp] get_info — cookies={'SI' if has_cookies else 'NO'}, client={client}")
+        # tv_embedded no requiere PO token y funciona bien con cookies.
+        # web requiere PO token (solo navegadores pueden generarlo) → da "format not available".
+        clients = ['tv_embedded', 'ios'] if has_cookies else ['tv_embedded', 'ios']
+        print(f"[yt-dlp] get_info — cookies={'SI' if has_cookies else 'NO'}, clients={clients}")
         ydl_opts = {
             'ffmpeg_location': self.ffmpeg_path,
             'quiet': True,
@@ -54,7 +56,7 @@ class VideoDownloader:
             'noplaylist': True,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['web'] if has_cookies else ['ios', 'tv_embedded'],
+                    'player_client': clients,
                 }
             },
         }
@@ -115,7 +117,7 @@ class VideoDownloader:
             'restrictfilenames': False,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['web'] if dl_has_cookies else ['ios', 'tv_embedded'],
+                    'player_client': ['tv_embedded', 'ios'],
                 }
             },
         }

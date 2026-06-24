@@ -2,5 +2,5 @@ fastapi
 uvicorn
 jinja2
 python-multipart
-yt-dlp
+yt-dlp>=2026.6.9
 sqlmodel
