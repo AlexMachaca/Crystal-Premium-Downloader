@@ -1,0 +1,60 @@
+# Plan de Implementación: MVP Web Video Downloader
+
+## 1. Objetivo
+Desarrollar una aplicación web intuitiva que permita a los usuarios descargar videos y audio (MP3) de múltiples plataformas (YouTube, TikTok, Facebook, Instagram) utilizando una única interfaz.
+
+## 2. Arquitectura y Tecnologías
+- **Backend**: FastAPI (Python) - Por su velocidad y manejo nativo de tareas asíncronas.
+- **Motor de Descarga**: `yt-dlp` - Versión mantenida y potente de youtube-dl.
+- **Procesamiento de Media**: FFmpeg - Necesario para conversiones a MP3 y unión de flujos de video/audio.
+- **Frontend**: 
+    - **Tailwind CSS**: Para un diseño moderno y responsivo.
+    - **HTMX**: Para actualizaciones dinámicas (como el estado de descarga) sin recargar la página.
+- **Estructura**: Monolito (Backend y Frontend en el mismo repositorio para simplificar el despliegue del MVP).
+
+## 3. Estructura del Proyecto Propuesta
+```text
+env_descargador/
+├── main.py              # Aplicación FastAPI y rutas de la API
+├── core/
+│   └── downloader.py    # Lógica de descarga refactorizada
+├── static/
+│   ├── css/             # Tailwind compilado o CDN
+│   └── js/              # Scripts mínimos si son necesarios
+├── templates/
+│   └── index.html       # Interfaz de usuario principal
+├── downloads/           # Carpeta temporal de procesamiento
+├── requirements.txt     # Dependencias del proyecto
+└── plan.txt             # Este documento
+```
+
+## 4. Pasos de Implementación
+
+### Fase 1: Configuración e Infraestructura
+1. Definir `requirements.txt` (fastapi, uvicorn, jinja2, yt-dlp, python-multipart).
+2. Refactorizar el script actual `downloader.py` para que sea una clase/módulo reutilizable dentro de la carpeta `core/`.
+3. Configurar la carpeta temporal de descargas con limpieza automática.
+
+### Fase 2: Backend (API)
+1. Crear endpoint `POST /info`: Recibe URL y devuelve título, miniatura y duración.
+2. Crear endpoint `POST /download`: Inicia la descarga en segundo plano (`BackgroundTasks`).
+3. Implementar lógica de streaming para enviar el archivo al usuario y eliminarlo después del envío.
+
+### Fase 3: Frontend (UI)
+1. Diseñar la página principal con un buscador central llamativo.
+2. Implementar tarjetas de previsualización de video.
+3. Añadir selectores de formato (MP4 / MP3) y calidad.
+4. Integrar HTMX para mostrar el progreso de la "preparación" del archivo.
+
+### Fase 4: Validación y Pulido
+1. Manejo de errores (URLs inválidas, videos privados, etc.).
+2. Optimización de tiempos de respuesta.
+
+## 5. Verificación y Pruebas
+- **Funcional**: Probar descargas exitosas en YouTube (Video/Shorts), TikTok e Instagram.
+- **Formatos**: Confirmar que la conversión a MP3 funciona correctamente vía FFmpeg.
+- **Concurrencia**: Probar que dos usuarios puedan descargar al mismo tiempo sin interferencias.
+
+## 6. Plan de Despliegue
+- Crear un `Dockerfile` que incluya la instalación de `ffmpeg`.
+- Desplegar en una plataforma como **Render** o **Railway** usando el contenedor.

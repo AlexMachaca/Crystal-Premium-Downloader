@@ -1,0 +1,26 @@
+# Entorno virtual Python
+Lib/
+Scripts/
+Include/
+share/
+pyvenv.cfg
+
+# Archivos generados en runtime
+downloads/
+database.db
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Variables de entorno
+.env
+.env.*
+
+# IDEs
+.vscode/
+.idea/
+*.swp

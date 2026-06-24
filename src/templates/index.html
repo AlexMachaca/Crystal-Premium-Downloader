@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Downloader Premium</title>
+    
+    <!-- PWA & iOS Tags -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#020617">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Downloader">
+    <link rel="apple-touch-icon" href="/static/img/icon-192.png">
+    
+    <!-- Configuración para evitar advertencias de Tailwind CDN -->
+    <script>
+        window.tailwind = {
+            config: {
+                darkMode: 'class'
+            }
+        }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+    <script src="/static/js/db.js"></script>
+    <script src="/static/js/app.js"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        :root {
+            /* ── Acento ── */
+            --accent:      #ef4444;
+            --accent-glow: rgba(239, 68, 68, 0.35);
+            --accent-soft: rgba(239, 68, 68, 0.12);
+
+            /* ── Superficies Liquid Glass ── */
+            --surface-base:     rgba(10, 15, 30, 0.55);   /* Tier 1 — cards */
+            --surface-elevated: rgba(16, 24, 44, 0.72);   /* Tier 2 — floaters */
+            --surface-overlay:  rgba(22, 32, 55, 0.88);   /* Tier 3 — sheets */
+
+            /* ── Bordes especulares (simulan grosor físico del vidrio) ── */
+            --border-specular: rgba(255, 255, 255, 0.26);  /* borde superior brillante */
+            --border-side:     rgba(255, 255, 255, 0.10);  /* bordes laterales sutiles */
+            --border-bottom:   rgba(0, 0, 0, 0.28);        /* borde inferior oscuro */
+
+            /* ── Texto ── */
+            --text-primary:   rgba(255, 255, 255, 0.95);
+            --text-secondary: rgba(255, 255, 255, 0.45);
+            --text-tertiary:  rgba(255, 255, 255, 0.20);
+
+            /* ── Alias legados (no usar en código nuevo) ── */
+            --glass-bg:    var(--surface-base);
+            --glass-border: var(--border-side);
+            --crystal-glow: var(--accent-soft);
+        }
+        body {
+            background-color: #020617;
+            color: #f8fafc;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow-x: hidden;
+        }
+        /* ── Liquid Glass Tier 1 — superficie estándar (cards, panels) ── */
+        .crystal-glass {
+            background: var(--surface-base);
+            backdrop-filter: blur(28px) saturate(185%);
+            -webkit-backdrop-filter: blur(28px) saturate(185%);
+            position: relative;
+            box-shadow:
+                0 8px 40px rgba(0, 0, 0, 0.45),
+                0 2px 8px  rgba(0, 0, 0, 0.25),
+                inset  0  1px 0 var(--border-specular),
+                inset  0 -1px 0 var(--border-bottom),
+                inset  1px 0 0 var(--border-side),
+                inset -1px 0 0 var(--border-side);
+        }
+        /* Reflejo especular en esquina superior — simula luz rebotando en el vidrio */
+        .crystal-glass::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background: radial-gradient(
+                ellipse 70% 50% at 25% 0%,
+                rgba(255, 255, 255, 0.07) 0%,
+                transparent 70%
+            );
+            pointer-events: none;
+        }
+        .crystal-border {
+            border: 1px solid var(--border-side);
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .animate-shake { animation: shake 0.2s cubic-bezier(.36,.07,.19,.97) both; }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fadeIn 0.4s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
+
+        /* Estilo iOS 26 para el player */
+        .player-expanded {
+            transform: translateY(0);
+            transition: transform 0.6s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .player-collapsed {
+            transform: translateY(100%);
+        }
+
+        /* Ambient Background */
+        .ambient-bg {
+            position: absolute;
+            inset: -10%;
+            filter: blur(80px);
+            opacity: 0.5;
+            z-index: -1;
+            transition: background 1s ease-in-out;
+        }
+
+        /* ── Liquid Glass Tier 2 — elementos flotantes (tab bar, mini player) ── */
+        .tab-bar-island {
+            background: var(--surface-elevated);
+            backdrop-filter: blur(36px) saturate(190%) brightness(1.04);
+            -webkit-backdrop-filter: blur(36px) saturate(190%) brightness(1.04);
+            position: relative;
+            box-shadow:
+                0 16px 56px rgba(0, 0, 0, 0.55),
+                0 4px  14px rgba(0, 0, 0, 0.30),
+                inset  0  1px 0 var(--border-specular),
+                inset  0 -1px 0 var(--border-bottom),
+                inset  1px 0 0 var(--border-side),
+                inset -1px 0 0 var(--border-side);
+        }
+
+        .active-glow {
+            filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.5));
+        }
+
+        /* ── Liquid Glass Tier 3 — sheets, menús contextuales ── */
+        .lg-overlay {
+            background: var(--surface-overlay);
+            backdrop-filter: blur(48px) saturate(200%) brightness(1.02);
+            -webkit-backdrop-filter: blur(48px) saturate(200%) brightness(1.02);
+            position: relative;
+            box-shadow:
+                0 -2px 80px rgba(0, 0, 0, 0.60),
+                0  8px 24px rgba(0, 0, 0, 0.35),
+                inset  0  1px 0 rgba(255, 255, 255, 0.22),
+                inset  0 -1px 0 rgba(0, 0, 0, 0.35),
+                inset  1px 0 0 rgba(255, 255, 255, 0.10),
+                inset -1px 0 0 rgba(255, 255, 255, 0.10);
+        }
+        .lg-overlay::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background: radial-gradient(
+                ellipse 80% 40% at 20% 0%,
+                rgba(255, 255, 255, 0.06) 0%,
+                transparent 70%
+            );
+            pointer-events: none;
+        }
+
+        /* ── Botón cristal — micro-surface interactiva ── */
+        .btn-crystal {
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(12px) saturate(150%);
+            -webkit-backdrop-filter: blur(12px) saturate(150%);
+            box-shadow:
+                inset  0  1px 0 rgba(255, 255, 255, 0.18),
+                inset  0 -1px 0 rgba(0, 0, 0, 0.15),
+                0 4px 12px rgba(0, 0, 0, 0.25);
+            transition: all 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+        .btn-crystal:active {
+            transform: scale(0.96);
+            background: rgba(255, 255, 255, 0.10);
+            box-shadow:
+                inset  0  1px 0 rgba(255, 255, 255, 0.14),
+                0 2px 6px rgba(0, 0, 0, 0.20);
+        }
+
+        /* ── Fondo ambiental — nebulosas animadas ── */
+        @keyframes nebula-drift {
+            0%   { transform: translate(0, 0)    scale(1);    }
+            33%  { transform: translate(5%, -5%) scale(1.06); }
+            66%  { transform: translate(-4%, 7%) scale(0.96); }
+            100% { transform: translate(3%, 2%)  scale(1.03); }
+        }
+        .nebula {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(110px);
+            opacity: 0.22;
+            animation: nebula-drift 22s ease-in-out infinite alternate;
+        }
+        .nebula-1 {
+            width: 60vw; height: 60vw;
+            top: -20%; left: -15%;
+            background: radial-gradient(circle, #7c3aed, #2e1065);
+            animation-duration: 22s;
+        }
+        .nebula-2 {
+            width: 50vw; height: 50vw;
+            bottom: -18%; right: -12%;
+            background: radial-gradient(circle, #1d4ed8, #0c1445);
+            animation-duration: 28s;
+            animation-delay: -10s;
+        }
+        .nebula-3 {
+            width: 38vw; height: 38vw;
+            top: 38%; left: 32%;
+            background: radial-gradient(circle, #991b1b, #3b0000);
+            animation-duration: 18s;
+            animation-delay: -16s;
+        }
+
+        /* ── HTMX indicator ── */
+        .htmx-indicator { opacity: 0; transition: opacity 200ms ease; }
+        .htmx-request .htmx-indicator { opacity: 1; }
+        .htmx-request.htmx-indicator { opacity: 1; }
+
+        /* ── Input Liquid Glass ── */
+        .lg-input {
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            position: relative;
+            box-shadow:
+                inset  0  1px 0 rgba(255,255,255,0.13),
+                inset  0 -1px 0 rgba(0,0,0,0.18),
+                0 4px 24px rgba(0,0,0,0.30);
+            transition: box-shadow 0.35s cubic-bezier(0.23,1,0.32,1),
+                        background  0.35s cubic-bezier(0.23,1,0.32,1);
+        }
+        .lg-input:focus-within {
+            background: rgba(255, 255, 255, 0.07);
+            box-shadow:
+                inset  0  1px 0 rgba(255,255,255,0.20),
+                inset  0 -1px 0 rgba(0,0,0,0.18),
+                0 0 0 2px var(--accent-glow),
+                0 8px 36px rgba(0,0,0,0.40);
+        }
+
+        /* ── Botones Liquid Glass ── */
+        .btn-lg-primary {
+            background: rgba(255, 255, 255, 0.93);
+            color: #000;
+            box-shadow:
+                inset 0 1px 0 #fff,
+                inset 0 -2px 0 rgba(0,0,0,0.10),
+                0 4px 20px rgba(0,0,0,0.35),
+                0 1px 4px  rgba(0,0,0,0.20);
+            transition: all 0.2s cubic-bezier(0.23,1,0.32,1);
+        }
+        .btn-lg-primary:hover { background: rgba(255,255,255,0.98); }
+        .btn-lg-primary:active {
+            transform: scale(0.97);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 2px 8px rgba(0,0,0,0.25);
+        }
+        .btn-lg-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255,255,255,0.85);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow:
+                inset 0  1px 0 rgba(255,255,255,0.18),
+                inset 0 -1px 0 rgba(0,0,0,0.15),
+                0 4px 16px rgba(0,0,0,0.20);
+            transition: all 0.2s cubic-bezier(0.23,1,0.32,1);
+        }
+        .btn-lg-secondary:hover  { background: rgba(255,255,255,0.12); }
+        .btn-lg-secondary:active { transform: scale(0.97); background: rgba(255,255,255,0.15); }
+
+        /* Waveform animado — canción activa en biblioteca */
+        @keyframes wave1 { 0%,100%{height:4px}  50%{height:16px} }
+        @keyframes wave2 { 0%,100%{height:12px} 50%{height:4px}  }
+        @keyframes wave3 { 0%,100%{height:6px}  50%{height:14px} }
+
+        .wave-bar {
+            display: inline-block;
+            width: 3px;
+            border-radius: 999px;
+            background: #ef4444;
+        }
+        .wave-bar-1 { animation: wave1 0.8s ease-in-out infinite; }
+        .wave-bar-2 { animation: wave2 0.8s ease-in-out infinite 0.15s; }
+        .wave-bar-3 { animation: wave3 0.8s ease-in-out infinite 0.3s; }
+
+        /* ── Library card — arte desenfocado como fondo ── */
+        .art-blur {
+            position: absolute;
+            inset: 0;
+            background-size: cover;
+            background-position: center;
+            filter: blur(36px) saturate(200%);
+            opacity: 0;
+            transform: scale(1.18);
+            transition: opacity 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .song-card.is-active .art-blur { opacity: 0.28; }
+
+        /* Barra lateral roja — indicador de canción activa */
+        .song-active-bar {
+            position: absolute;
+            left: 0; top: 20%; bottom: 20%;
+            width: 3px;
+            border-radius: 0 4px 4px 0;
+            background: #ef4444;
+            box-shadow: 0 0 8px rgba(239,68,68,0.7);
+            opacity: 0;
+            transition: opacity 0.3s ease, top 0.3s ease, bottom 0.3s ease;
+        }
+        .song-card.is-active .song-active-bar { opacity: 1; }
+
+        /* Tinte sutil activo sobre el card */
+        .song-card.is-active {
+            background: rgba(239, 68, 68, 0.06) !important;
+        }
+
+        /* Search slide animation */
+        #library-search-wrapper {
+            overflow: hidden;
+            max-height: 0;
+            transition: max-height 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+        #library-search-wrapper.open { max-height: 80px; }
+
+        /* ── Player artwork — flotante cuando reproduce ── */
+        .player-artwork {
+            border-radius: 32px;
+            transition: transform 0.7s cubic-bezier(0.23, 1, 0.32, 1),
+                        box-shadow 0.7s ease;
+            box-shadow:
+                0 0 0 1px rgba(255,255,255,0.13),
+                0 24px 80px -12px rgba(0,0,0,0.80),
+                0 8px 24px rgba(0,0,0,0.50),
+                inset 0 1px 0 rgba(255,255,255,0.16);
+        }
+        .player-artwork.is-playing {
+            transform: scale(1.05) translateY(-8px);
+            box-shadow:
+                0 0 0 1px rgba(255,255,255,0.20),
+                0 40px 100px -10px rgba(0,0,0,0.90),
+                0 14px 36px rgba(0,0,0,0.60),
+                inset 0 1px 0 rgba(255,255,255,0.22);
+        }
+
+        /* ── Botón principal play/pause ── */
+        .btn-play-liquid {
+            width: 76px; height: 76px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.93);
+            box-shadow:
+                inset 0 1px 0 #fff,
+                inset 0 -2px 0 rgba(0,0,0,0.10),
+                0 8px 32px rgba(0,0,0,0.42),
+                0 2px 8px  rgba(0,0,0,0.28);
+            transition: all 0.18s cubic-bezier(0.23,1,0.32,1);
+            flex-shrink: 0;
+        }
+        .btn-play-liquid:active { transform: scale(0.90); box-shadow: 0 4px 16px rgba(0,0,0,0.30); }
+
+        /* ── Botones secundarios prev / next ── */
+        .btn-control-liquid {
+            width: 52px; height: 52px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.07);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,0.16),
+                inset 0 -1px 0 rgba(0,0,0,0.12),
+                0 4px 12px rgba(0,0,0,0.25);
+            transition: all 0.18s cubic-bezier(0.23,1,0.32,1);
+            flex-shrink: 0;
+        }
+        .btn-control-liquid:active { transform: scale(0.87); background: rgba(255,255,255,0.13); }
+        .btn-control-liquid.is-disabled { opacity: 0.22; cursor: not-allowed; pointer-events: none; }
+
+        /* ── Seekbar Liquid Glass ── */
+        .seekbar-wrap {
+            position: relative;
+            padding: 14px 0;
+            margin: -14px 0;
+            cursor: pointer;
+        }
+        .seekbar-track {
+            height: 4px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.09);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.45);
+            position: relative;
+            overflow: visible;
+        }
+        .seekbar-fill {
+            height: 100%;
+            border-radius: 999px;
+            background: #fff;
+            box-shadow: 0 0 10px rgba(255,255,255,0.35);
+            position: relative;
+            pointer-events: none;
+        }
+        .seekbar-thumb {
+            position: absolute;
+            right: -7px; top: -5px;
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        .seekbar-wrap:hover .seekbar-thumb,
+        .seekbar-wrap:active .seekbar-thumb { opacity: 1; }
+
+        /* ── Volume slider ── */
+        .volume-slider {
+            -webkit-appearance: none;
+            width: 100%; height: 3px;
+            border-radius: 999px;
+            outline: none; cursor: pointer;
+            background: linear-gradient(
+                to right,
+                rgba(255,255,255,0.70) 0%,
+                rgba(255,255,255,0.70) var(--vol, 100%),
+                rgba(255,255,255,0.12) var(--vol, 100%),
+                rgba(255,255,255,0.12) 100%
+            );
+        }
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.40);
+            cursor: pointer;
+            transition: transform 0.15s ease;
+        }
+        .volume-slider::-webkit-slider-thumb:active { transform: scale(1.25); }
+        .volume-slider::-moz-range-thumb {
+            width: 14px; height: 14px;
+            border-radius: 50%; border: none;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.40);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col" :class="currentSong.id ? 'pb-56' : 'pb-32'" x-data="playerData()">
+    
+    <!-- Capa 1: Nebulosas decorativas animadas (estáticas en color, vivas en movimiento) -->
+    <div class="fixed inset-0 pointer-events-none z-[-2] overflow-hidden">
+        <div class="nebula nebula-1"></div>
+        <div class="nebula nebula-2"></div>
+        <div class="nebula nebula-3"></div>
+    </div>
+
+    <!-- Capa 2: Ambient light reactivo a la canción actual -->
+    <div class="fixed inset-0 pointer-events-none z-[-1]"
+         style="transition: background 2s cubic-bezier(0.23, 1, 0.32, 1);"
+         :style="currentSong.id
+             ? 'background: radial-gradient(ellipse 75% 55% at 50% 100%, ' + accentColor + ' 0%, transparent 68%)'
+             : ''">
+    </div>
+
+    <!-- Header -->
+    <nav class="p-6 flex justify-between items-center max-w-6xl mx-auto w-full sticky top-0 z-40 bg-transparent">
+        <div class="flex items-center space-x-3">
+            <div class="bg-red-600 p-2.5 rounded-2xl shadow-xl shadow-red-600/30 crystal-border">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                </svg>
+            </div>
+            <span class="text-2xl font-black tracking-tighter italic">CRYSTAL<span class="text-red-500 font-normal not-italic ml-1">Premium</span></span>
+        </div>
+        <div class="text-[10px] font-black px-2.5 py-1 bg-white/5 border border-white/10 rounded-full text-white/50 tracking-tighter uppercase">iOS 26 Prototype</div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main id="main-content" class="flex-grow px-5 max-w-3xl mx-auto w-full pt-2">
+        {% include 'download_view.html' %}
+    </main>
+
+    <!-- Mini Player Island -->
+    <div x-show="currentSong.id"
+         x-transition:enter="transition ease-out duration-400"
+         x-transition:enter-start="opacity-0 translate-y-8 scale-95"
+         x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+         class="fixed bottom-28 left-5 right-5 z-50"
+         @click="expandPlayer = true">
+        <div class="tab-bar-island px-3 py-2.5 rounded-2xl flex items-center gap-3 relative overflow-hidden">
+            <!-- Artwork -->
+            <div class="relative w-11 h-11 flex-shrink-0">
+                <img :src="currentSong.thumbnail" class="w-full h-full rounded-[12px] object-cover shadow-lg">
+                <div x-show="playing" class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#0f172a] animate-pulse"></div>
+            </div>
+            <!-- Título y artista -->
+            <div class="flex-grow min-w-0">
+                <div class="text-[13px] font-black truncate leading-tight" x-text="currentSong.title"></div>
+                <div class="text-[10px] text-white/40 font-bold truncate uppercase tracking-widest" x-text="currentSong.artist"></div>
+            </div>
+            <!-- Controles: prev · play · next -->
+            <div class="flex items-center gap-0.5 flex-shrink-0">
+                <button @click.stop="playPrev()"
+                        :class="canGoPrev() ? 'text-white/65 hover:text-white active:scale-75' : 'text-white/18 pointer-events-none'"
+                        class="w-9 h-9 flex items-center justify-center rounded-full transition-all duration-150">
+                    <svg class="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M6 6h2v12H6zM19 6 8.5 12l10.5 6V6z"/>
+                    </svg>
+                </button>
+                <button @click.stop="togglePlay()"
+                        class="w-10 h-10 flex items-center justify-center bg-white text-black rounded-full shadow-lg active:scale-90 transition-transform flex-shrink-0">
+                    <svg x-show="!playing" class="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    <svg x-show="playing"  class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                </button>
+                <button @click.stop="playNext()"
+                        :class="canGoNext() ? 'text-white/65 hover:text-white active:scale-75' : 'text-white/18 pointer-events-none'"
+                        class="w-9 h-9 flex items-center justify-center rounded-full transition-all duration-150">
+                    <svg class="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M6 18 15.5 12 6 6v12zM16 6v12h2V6h-2z"/>
+                    </svg>
+                </button>
+            </div>
+            <!-- Barra de progreso ultra-fina -->
+            <div class="absolute bottom-0 left-0 right-0 h-[2px] bg-white/5">
+                <div class="h-full bg-white/40 transition-all duration-300 rounded-full"
+                     :style="'width: ' + progress + '%'"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation Island -->
+    <div class="fixed bottom-8 left-0 right-0 z-50 px-5">
+        <div class="tab-bar-island rounded-[32px] flex items-center p-2 max-w-sm mx-auto relative">
+
+            <!-- Pill deslizante: indica el tab activo -->
+            <div class="absolute rounded-[24px] bg-white/10 border border-white/[0.07] pointer-events-none transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+                 :style="`top:8px;bottom:8px;width:calc((100% - 16px)/3);left:calc(8px + ${activeTab === 'download' ? 0 : activeTab === 'library' ? 1 : 2} * (100% - 16px)/3)`">
+            </div>
+
+            <!-- Tab: Descargar -->
+            <button hx-get="/ui/download-view"
+                    hx-target="#main-content"
+                    hx-swap="innerHTML"
+                    @click="activeTab = 'download'"
+                    class="relative z-10 flex-1 flex flex-col items-center justify-center gap-1 min-h-[58px] rounded-[24px] transition-all duration-200 active:scale-[0.93]">
+                <svg class="w-[22px] h-[22px] transition-all duration-300"
+                     :class="activeTab === 'download' ? 'text-white scale-110' : 'text-white/35'"
+                     fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                <span class="text-[9px] font-black uppercase tracking-[0.12em] transition-colors duration-300"
+                      :class="activeTab === 'download' ? 'text-white' : 'text-white/28'">Descargar</span>
+            </button>
+
+            <!-- Tab: Biblioteca -->
+            <button hx-get="/ui/library"
+                    hx-target="#main-content"
+                    hx-swap="innerHTML"
+                    @click="activeTab = 'library'"
+                    class="relative z-10 flex-1 flex flex-col items-center justify-center gap-1 min-h-[58px] rounded-[24px] transition-all duration-200 active:scale-[0.93]">
+                <svg class="w-[22px] h-[22px] transition-all duration-300"
+                     :class="activeTab === 'library' ? 'text-white scale-110' : 'text-white/35'"
+                     fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+                </svg>
+                <span class="text-[9px] font-black uppercase tracking-[0.12em] transition-colors duration-300"
+                      :class="activeTab === 'library' ? 'text-white' : 'text-white/28'">Biblioteca</span>
+            </button>
+
+            <!-- Tab: Online -->
+            <button hx-get="/ui/online-library"
+                    hx-target="#main-content"
+                    hx-swap="innerHTML"
+                    @click="activeTab = 'online'"
+                    class="relative z-10 flex-1 flex flex-col items-center justify-center gap-1 min-h-[58px] rounded-[24px] transition-all duration-200 active:scale-[0.93]">
+                <svg class="w-[22px] h-[22px] transition-all duration-300"
+                     :class="activeTab === 'online' ? 'text-white scale-110' : 'text-white/35'"
+                     fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/>
+                </svg>
+                <span class="text-[9px] font-black uppercase tracking-[0.12em] transition-colors duration-300"
+                      :class="activeTab === 'online' ? 'text-white' : 'text-white/28'">Online</span>
+            </button>
+
+        </div>
+    </div>
+
+    <!-- Full Player Modal (Crystal UI) -->
+    <div class="fixed inset-0 z-[60] bg-[#020617] flex flex-col transition-transform duration-700 ease-[cubic-bezier(0.32, 0.72, 0, 1)]"
+         :class="expandPlayer ? 'player-expanded' : 'player-collapsed'">
+
+        <!-- Ambient Background -->
+        <div class="ambient-bg" :style="'background: radial-gradient(circle, ' + accentColor + ' 0%, transparent 70%)'"></div>
+
+        <!-- Header — flex-shrink-0: nunca se comprime -->
+        <div class="flex-shrink-0 flex justify-between items-center px-6 pt-6 pb-2">
+            <button @click="expandPlayer = false" class="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 border border-white/10">
+                <svg class="w-5 h-5 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div class="text-[10px] font-black text-white/30 tracking-[0.3em] uppercase">Now Playing</div>
+            <button @click="showOptions = !showOptions" class="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 border border-white/10 active:scale-90 transition-transform">
+                <svg class="w-5 h-5 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/></svg>
+            </button>
+        </div>
+
+        <!-- Album art — flex-1 min-h-0: ocupa el espacio disponible sin comprimir controles -->
+        <div class="flex-1 min-h-0 flex items-center justify-center px-10 py-2 overflow-hidden">
+            <img :src="currentSong.thumbnail"
+                 :class="playing ? 'player-artwork is-playing' : 'player-artwork'"
+                 class="w-full object-cover"
+                 style="max-height: min(42vh, 300px); max-width: min(42vh, 300px); aspect-ratio: 1;">
+        </div>
+
+        <!-- Controles inferiores — flex-shrink-0: siempre visibles -->
+        <div class="flex-shrink-0 px-6 pb-safe" style="padding-bottom: max(1.5rem, env(safe-area-inset-bottom))">
+
+            <!-- Título + artista -->
+            <div class="flex items-start justify-between gap-3 mb-5">
+                <div class="min-w-0 flex-1">
+                    <h2 class="text-[22px] font-black tracking-tight leading-tight truncate" x-text="currentSong.title"></h2>
+                    <p class="text-[13px] text-red-400/80 font-bold uppercase tracking-[0.15em] mt-0.5 truncate" x-text="currentSong.artist"></p>
+                </div>
+                <!-- Botón favorito (placeholder decorativo) -->
+                <button class="w-9 h-9 flex items-center justify-center text-white/20 hover:text-red-400/60 transition-colors flex-shrink-0 mt-0.5">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Seekbar Liquid Glass -->
+            <div class="mb-1 px-1">
+                <div class="seekbar-wrap"
+                     @click="seekTo($event)"
+                     @mousedown="dragging = true" @mousemove="dragging && seekTo($event)"
+                     @mouseup="dragging = false" @mouseleave="dragging = false"
+                     @touchstart.prevent="touchSeek($event)" @touchmove.prevent="touchSeek($event)">
+                    <div class="seekbar-track">
+                        <div class="seekbar-fill" :style="'width: ' + progress + '%'">
+                            <div class="seekbar-thumb"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-between mt-2 text-[10px] text-white/30 font-black tracking-widest tabular-nums">
+                    <span x-text="formatTime(currentTime)"></span>
+                    <span x-text="formatTime(duration)"></span>
+                </div>
+            </div>
+
+            <!-- Controles principales: prev / play / next -->
+            <div class="flex items-center justify-center gap-8 mb-5">
+                <button @click="playPrev()"
+                        :class="canGoPrev() ? '' : 'is-disabled'"
+                        class="btn-control-liquid">
+                    <svg class="w-6 h-6 text-white/80 fill-current" viewBox="0 0 24 24">
+                        <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/>
+                    </svg>
+                </button>
+
+                <button @click="togglePlay()" class="btn-play-liquid">
+                    <svg x-show="!playing" class="w-9 h-9 text-black fill-current ml-1" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    <svg x-show="playing"  class="w-9 h-9 text-black fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                </button>
+
+                <button @click="playNext()"
+                        :class="canGoNext() ? '' : 'is-disabled'"
+                        class="btn-control-liquid">
+                    <svg class="w-6 h-6 text-white/80 fill-current" viewBox="0 0 24 24">
+                        <path d="M16 18h2V6h-2M7 6v12l8.5-6z"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Shuffle · Repeat -->
+            <div class="flex items-center justify-between px-3 mb-5">
+                <!-- Shuffle -->
+                <button @click="toggleShuffle()"
+                        :class="shuffle ? 'text-red-400' : 'text-white/25'"
+                        class="flex items-center gap-1.5 transition-all duration-200 active:scale-90">
+                    <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16 3h5v5M4 20 21 3M21 16v5h-5M4 4l7 7"/>
+                    </svg>
+                    <span x-show="shuffle" class="text-[9px] font-black tracking-wider">ON</span>
+                </button>
+
+                <!-- Repeat -->
+                <button @click="toggleRepeat()"
+                        :class="repeat !== 'none' ? 'text-red-400' : 'text-white/25'"
+                        class="flex items-center gap-1.5 transition-all duration-200 active:scale-90">
+                    <svg x-show="repeat !== 'one'" class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 2l4 4-4 4M3 11V9a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/>
+                    </svg>
+                    <svg x-show="repeat === 'one'" class="w-[18px] h-[18px] text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 2l4 4-4 4M3 11V9a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 01-4 4H3M12 11v6"/>
+                    </svg>
+                    <span x-show="repeat === 'one'" class="text-[9px] font-black tracking-wider">1</span>
+                    <span x-show="repeat === 'all'" class="text-[9px] font-black tracking-wider">ALL</span>
+                </button>
+            </div>
+
+            <!-- Volumen -->
+            <div class="flex items-center gap-3 px-1">
+                <!-- Ícono mute / volumen bajo -->
+                <button @click="toggleMute()"
+                        class="text-white/30 hover:text-white/55 transition-colors flex-shrink-0 active:scale-90">
+                    <svg x-show="muted || volume === 0" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                    </svg>
+                    <svg x-show="!muted && volume > 0 && volume <= 0.5" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/>
+                    </svg>
+                    <svg x-show="!muted && volume > 0.5" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                    </svg>
+                </button>
+
+                <!-- Slider -->
+                <input type="range" min="0" max="1" step="0.02"
+                       class="volume-slider flex-1"
+                       :value="muted ? 0 : volume"
+                       :style="'--vol: ' + Math.round((muted ? 0 : volume) * 100) + '%'"
+                       @input="setVolume(parseFloat($event.target.value))">
+
+                <!-- Ícono volumen alto -->
+                <svg class="w-4 h-4 text-white/30 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Options Sheet — canción actual del player -->
+        <div x-show="showOptions"
+             @click.self="showOptions = false"
+             class="absolute inset-0 z-20 flex items-end bg-black/50"
+             x-transition:enter="transition duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition duration-200 ease-in"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             style="display:none;">
+            <div @click.stop
+                 x-transition:enter="transition duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                 x-transition:enter-start="translate-y-full"
+                 x-transition:enter-end="translate-y-0"
+                 x-transition:leave="transition duration-200 ease-in"
+                 x-transition:leave-start="translate-y-0"
+                 x-transition:leave-end="translate-y-full"
+                 class="w-full lg-overlay rounded-t-[32px]">
+                <!-- Handle -->
+                <div class="flex justify-center pt-3 pb-1">
+                    <div class="w-10 h-1 bg-white/20 rounded-full"></div>
+                </div>
+                <!-- Info canción -->
+                <div class="flex items-center gap-4 px-6 py-4 border-b border-white/5">
+                    <img :src="currentSong.thumbnail" class="w-14 h-14 rounded-2xl object-cover flex-shrink-0 shadow-lg">
+                    <div class="min-w-0">
+                        <div class="font-black text-sm truncate" x-text="currentSong.title"></div>
+                        <div class="text-white/40 text-[11px] font-bold uppercase tracking-widest truncate mt-0.5" x-text="currentSong.artist"></div>
+                    </div>
+                </div>
+                <!-- Opciones -->
+                <div class="py-2">
+                    <button @click="shareCurrentSong()"
+                            class="w-full flex items-center gap-4 px-6 py-3.5 active:bg-white/5 transition-colors">
+                        <div class="w-10 h-10 rounded-2xl bg-white/8 border border-white/10 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+                            </svg>
+                        </div>
+                        <span class="text-sm font-semibold text-white/80">Compartir</span>
+                    </button>
+                    <button @click="deleteCurrentSong()"
+                            class="w-full flex items-center gap-4 px-6 py-3.5 active:bg-red-500/10 transition-colors">
+                        <div class="w-10 h-10 rounded-2xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                        </div>
+                        <span class="text-sm font-semibold text-red-400">Eliminar de la biblioteca</span>
+                    </button>
+                </div>
+                <!-- Cancelar -->
+                <div class="px-4 pb-8 pt-1">
+                    <button @click="showOptions = false"
+                            class="w-full py-4 rounded-2xl bg-white/5 text-white/40 text-sm font-bold active:bg-white/10 transition-colors">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <audio id="main-audio" @timeupdate="updateProgress()" @ended="onSongEnd()" @error="onAudioError()"></audio>
+
+    <script>
+        function playerData() {
+            return {
+                activeTab: 'download',
+                expandPlayer: false,
+                playing: false,
+                progress: 0,
+                currentTime: 0,
+                duration: 0,
+                accentColor: 'rgba(239, 68, 68, 0.4)',
+                currentSong: { id: null, title: '', artist: '', thumbnail: '' },
+                queue: [],
+                queueIndex: -1,
+                shuffle: false,
+                repeat: 'none',
+                volume: 1,
+                muted: false,
+                dragging: false,
+                showOptions: false,
+                cardOptions: { show: false, id: null, title: '', artist: '', thumbnail: '', genre: 'Sin categoría', songType: 'local' },
+                categoryPicker: { show: false, songId: null, songType: 'local', currentGenre: 'Sin categoría', genres: [], newName: '', creating: false },
+
+                init() {
+                    // Restaurar última canción (solo UI, sin auto-play)
+                    try {
+                        const savedSong = localStorage.getItem('crystal_last_song');
+                        if (savedSong) this.currentSong = JSON.parse(savedSong);
+                        const savedVol = localStorage.getItem('crystal_volume');
+                        if (savedVol !== null) {
+                            this.volume = parseFloat(savedVol);
+                            document.getElementById('main-audio').volume = this.volume;
+                        }
+                    } catch (_) {}
+                },
+
+                playSong(id, title, artist, thumbnail, audioUrl = null) {
+                    const prevId = this.currentSong.id;
+                    this.currentSong = { id, title, artist, thumbnail };
+                    if (window.updateActiveCard) window.updateActiveCard(id, prevId);
+                    // Resetear progreso visualmente antes de que el audio empiece
+                    this.progress = 0;
+                    this.currentTime = 0;
+                    this.duration = 0;
+                    const audio = document.getElementById('main-audio');
+                    // Aplicar volumen y mute actuales al elemento de audio
+                    audio.volume = this.muted ? 0 : this.volume;
+                    audio.muted = this.muted;
+                    audio.src = audioUrl || `/api/audio/${id}`;
+                    audio.play();
+                    this.playing = true;
+                    this.extractDominantColor(thumbnail).then(color => { this.accentColor = color; });
+                    // Persistir última canción para restaurar UI al recargar
+                    try { localStorage.setItem('crystal_last_song', JSON.stringify({ id, title, artist, thumbnail })); } catch (_) {};
+                    
+                    // Configurar MediaSession API para controles en pantalla de bloqueo
+                    if ('mediaSession' in navigator) {
+                        navigator.mediaSession.metadata = new MediaMetadata({
+                            title: title,
+                            artist: artist,
+                            artwork: [{ src: thumbnail, sizes: '512x512', type: 'image/png' }]
+                        });
+                        
+                        navigator.mediaSession.setActionHandler('play', () => this.togglePlay());
+                        navigator.mediaSession.setActionHandler('pause', () => this.togglePlay());
+                        navigator.mediaSession.setActionHandler('previoustrack', () => this.playPrev());
+                        navigator.mediaSession.setActionHandler('nexttrack', () => this.playNext());
+                        navigator.mediaSession.setActionHandler('seekto', (d) => {
+                            document.getElementById('main-audio').currentTime = d.seekTime;
+                        });
+                    }
+                },
+                
+                togglePlay() {
+                    const audio = document.getElementById('main-audio');
+                    if (!this.currentSong.id) return;
+                    if (this.playing) audio.pause();
+                    else audio.play();
+                    this.playing = !this.playing;
+                },
+                
+                updateProgress() {
+                    const audio = document.getElementById('main-audio');
+                    this.currentTime = audio.currentTime;
+                    this.duration = audio.duration || 0;
+                    this.progress = (this.currentTime / this.duration) * 100;
+                },
+                
+                formatTime(seconds) {
+                    if (!seconds || isNaN(seconds)) return "0:00";
+                    const m = Math.floor(seconds / 60);
+                    const s = Math.floor(seconds % 60);
+                    return `${m}:${s.toString().padStart(2, '0')}`;
+                },
+
+                setQueue(songs, startIndex) {
+                    this.queue = songs;
+                    this.queueIndex = startIndex;
+                },
+
+                // Si la canción ya tiene audioUrl en memoria → playSong directo.
+                // Si no (aún no se cargó su blob de IndexedDB) → delegamos a playLocalSong
+                // que maneja la carga asíncrona desde Dexie y actualiza la cola.
+                async _loadAndPlay(song) {
+                    if (!song) return;
+                    if (song.audioUrl) {
+                        this.playSong(song.id, song.title, song.artist, song.thumbnail, song.audioUrl);
+                    } else if (typeof playLocalSong === 'function') {
+                        await playLocalSong(song.id, song.title, song.artist, song.thumbnail);
+                    }
+                },
+
+                playNext() {
+                    const q = this.queue.length ? this.queue
+                        : (window._libraryQueue?.length ? window._libraryQueue : (window._serverQueue || []));
+                    if (q.length === 0) return;
+                    if (q !== this.queue) this.queue = q;
+                    this.queueIndex = (this.queueIndex + 1) % q.length;
+                    this._loadAndPlay(q[this.queueIndex]);
+                },
+
+                playPrev() {
+                    const q = this.queue.length ? this.queue
+                        : (window._libraryQueue?.length ? window._libraryQueue : (window._serverQueue || []));
+                    if (q.length === 0) return;
+                    if (q !== this.queue) this.queue = q;
+                    if (this.queueIndex > 0) {
+                        this.queueIndex--;
+                        this._loadAndPlay(q[this.queueIndex]);
+                    } else {
+                        const audio = document.getElementById('main-audio');
+                        if (audio) { audio.currentTime = 0; if (!this.playing) audio.play(); }
+                    }
+                },
+
+                canGoNext() { return this.queue.length > 1; },
+
+                canGoPrev() { return this.queue.length > 0; },
+
+                onSongEnd() {
+                    if (this.shuffle) {
+                        const i = Math.floor(Math.random() * this.queue.length);
+                        this.queueIndex = i;
+                        this._loadAndPlay(this.queue[i]);
+                    } else if (this.repeat === 'one') {
+                        const audio = document.getElementById('main-audio');
+                        audio.currentTime = 0;
+                        audio.play();
+                    } else if (this.canGoNext()) {
+                        this.playNext();
+                    } else if (this.repeat === 'all' && this.queue.length > 0) {
+                        this.queueIndex = 0;
+                        this._loadAndPlay(this.queue[0]);
+                    } else {
+                        this.playing = false;
+                    }
+                },
+
+                onAudioError() {
+                    if (!this.currentSong.id) return;
+                    // Detectar si la canción actual viene del servidor (audioUrl apunta a /api/audio/server/)
+                    const qEntry = this.queue.find(s => s.id === this.currentSong.id);
+                    if (qEntry?.audioUrl?.includes('/api/audio/server/')) {
+                        // Canción del servidor: no se puede recargar desde IndexedDB
+                        this.playing = false;
+                        return;
+                    }
+                    // Canción local: el blob URL fue revocado → limpiar y recargar desde IndexedDB
+                    const entry = (window._libraryQueue || []).find(s => s.id === this.currentSong.id);
+                    if (entry) entry.audioUrl = null;
+                    this.progress = 0;
+                    this.currentTime = 0;
+                    if (typeof playLocalSong === 'function') {
+                        playLocalSong(this.currentSong.id, this.currentSong.title, this.currentSong.artist, this.currentSong.thumbnail);
+                    }
+                },
+
+                seekTo(event) {
+                    const bar = event.currentTarget;
+                    const rect = bar.getBoundingClientRect();
+                    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+                    const audio = document.getElementById('main-audio');
+                    if (audio.duration) audio.currentTime = ratio * audio.duration;
+                },
+
+                touchSeek(event) {
+                    const touch = event.touches[0];
+                    const bar = event.currentTarget;
+                    const rect = bar.getBoundingClientRect();
+                    const ratio = Math.min(1, Math.max(0, (touch.clientX - rect.left) / rect.width));
+                    const audio = document.getElementById('main-audio');
+                    if (audio.duration) audio.currentTime = ratio * audio.duration;
+                },
+
+                extractDominantColor(imgUrl) {
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.crossOrigin = 'anonymous';
+                        img.onload = () => {
+                            try {
+                                const canvas = document.createElement('canvas');
+                                canvas.width = canvas.height = 1;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, 1, 1);
+                                const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+                                // Exagerar el canal dominante para un ambient glow más vívido
+                                const max = Math.max(r, g, b);
+                                const boost = (ch) => Math.min(255, Math.round(ch * (ch === max ? 1.9 : 0.35)));
+                                resolve(`rgba(${boost(r)}, ${boost(g)}, ${boost(b)}, 0.5)`);
+                            } catch (e) {
+                                resolve('rgba(239, 68, 68, 0.45)');
+                            }
+                        };
+                        img.onerror = () => resolve('rgba(239, 68, 68, 0.45)');
+                        img.src = imgUrl;
+                    });
+                },
+
+                deleteCurrentSong() {
+                    if (!confirm(`¿Eliminar "${this.currentSong.title}" de tu biblioteca?`)) return;
+                    const id = this.currentSong.id;
+                    deleteLocalSong(id).then(() => {
+                        const audio = document.getElementById('main-audio');
+                        audio.pause();
+                        audio.src = '';
+                        this.currentSong = { id: null, title: '', artist: '', thumbnail: '' };
+                        this.playing = false;
+                        this.expandPlayer = false;
+                        this.showOptions = false;
+                        // Eliminar de la cola local
+                        this.queue = this.queue.filter(s => s.id !== id);
+                        window._libraryQueue = (window._libraryQueue || []).filter(s => s.id !== id);
+                        if (window.refreshLibraryView) window.refreshLibraryView();
+                    });
+                },
+
+                shareCurrentSong() {
+                    this.showOptions = false;
+                    if (navigator.share) {
+                        navigator.share({
+                            title: this.currentSong.title,
+                            text: `🎵 ${this.currentSong.title} — ${this.currentSong.artist}`
+                        });
+                    }
+                },
+
+                async deleteCardSong() {
+                    const { id, title, songType } = this.cardOptions;
+                    const label = songType === 'server' ? 'del servidor' : 'de tu biblioteca';
+                    if (!confirm(`¿Eliminar "${title}" ${label}?`)) return;
+
+                    if (songType === 'server') {
+                        try {
+                            const res = await fetch(`/api/songs/${id}`, { method: 'DELETE' });
+                            if (!res.ok) { alert('Error al eliminar del servidor.'); return; }
+                        } catch (e) { alert('Error de red.'); return; }
+                        this.cardOptions.show = false;
+                        htmx.ajax('GET', '/ui/online-library', '#main-content');
+                    } else {
+                        await deleteLocalSong(id);
+                        if (this.currentSong.id === id) {
+                            const audio = document.getElementById('main-audio');
+                            audio.pause(); audio.src = '';
+                            this.currentSong = { id: null, title: '', artist: '', thumbnail: '' };
+                            this.playing = false;
+                        }
+                        this.queue = this.queue.filter(s => s.id !== id);
+                        window._libraryQueue = (window._libraryQueue || []).filter(s => s.id !== id);
+                        this.cardOptions.show = false;
+                        if (window.refreshLibraryView) window.refreshLibraryView();
+                    }
+                },
+
+                // ── Categorías ───────────────────────────────────────────
+                async openCategoryPicker() {
+                    const { id, genre, songType } = this.cardOptions;
+                    // Fusionar categorías de IndexedDB + SQLite para un picker unificado
+                    const genreSet = new Set(['Sin categoría']);
+                    try {
+                        if (typeof getLocalGenres === 'function') {
+                            const local = await getLocalGenres();
+                            local.forEach(g => genreSet.add(g));
+                        }
+                    } catch (_) {}
+                    try {
+                        const res = await fetch('/api/genres');
+                        if (res.ok) {
+                            const server = await res.json();
+                            server.forEach(g => genreSet.add(g));
+                        }
+                    } catch (_) {}
+                    this.categoryPicker = {
+                        show:         true,
+                        songId:       id,
+                        songType:     songType || 'local',
+                        currentGenre: genre || 'Sin categoría',
+                        genres:       [...genreSet].sort(),
+                        newName:      '',
+                        creating:     false,
+                    };
+                },
+
+                async assignCategory(genre) {
+                    const { songId, songType } = this.categoryPicker;
+                    if (songType === 'local') {
+                        if (typeof updateSongGenre === 'function') await updateSongGenre(songId, genre);
+                        if (window.refreshLibraryView) window.refreshLibraryView();
+                    } else {
+                        const fd = new FormData();
+                        fd.append('genre', genre);
+                        await fetch(`/api/songs/${songId}/genre`, { method: 'PATCH', body: fd });
+                        htmx.ajax('GET', '/ui/online-library', '#main-content');
+                    }
+                    this.categoryPicker.show  = false;
+                    this.categoryPicker.creating = false;
+                    this.cardOptions.show     = false;
+                },
+
+                async createAndAssignCategory() {
+                    const name = this.categoryPicker.newName.trim();
+                    if (!name) return;
+                    await this.assignCategory(name);
+                    this.categoryPicker.newName = '';
+                },
+                // ─────────────────────────────────────────────────────────
+
+                toggleShuffle() {
+                    this.shuffle = !this.shuffle;
+                },
+
+                toggleRepeat() {
+                    const modes = ['none', 'all', 'one'];
+                    this.repeat = modes[(modes.indexOf(this.repeat) + 1) % 3];
+                },
+
+                setVolume(val) {
+                    this.volume = val;
+                    this.muted = val === 0;
+                    const audio = document.getElementById('main-audio');
+                    audio.volume = val;
+                    audio.muted = this.muted;
+                    localStorage.setItem('crystal_volume', val);
+                },
+
+                toggleMute() {
+                    this.muted = !this.muted;
+                    const audio = document.getElementById('main-audio');
+                    audio.muted = this.muted;
+                }
+            }
+        }
+
+        window.playSong = (id, title, artist, thumbnail) => {
+            const el = document.querySelector('[x-data]');
+            if (window.Alpine) {
+                const data = window.Alpine.$data(el);
+                data.playSong(id, title, artist, thumbnail);
+            } else {
+                // Fallback si Alpine no está listo
+                el.__x.$data.playSong(id, title, artist, thumbnail);
+            }
+        };
+
+        window.updateActiveCard = (newId, oldId) => {
+            // Busca tarjetas locales (Library) y de servidor (Online)
+            const findCard = (id) =>
+                document.querySelector(`[data-song-id="${id}"]`) ||
+                document.querySelector(`[data-server-song-id="${id}"]`);
+
+            if (oldId) {
+                const prev = findCard(oldId);
+                if (prev) {
+                    prev.classList.remove(
+                        'ring-1', 'ring-red-500/40', 'bg-red-500/5',
+                        'ring-blue-400/40', 'bg-blue-400/5',
+                        'is-active'
+                    );
+                    const dur = prev.querySelector('.song-duration');
+                    const wav = prev.querySelector('.song-waveform');
+                    if (dur) dur.classList.remove('hidden');
+                    if (wav) { wav.classList.add('hidden'); wav.classList.remove('flex'); }
+                }
+            }
+            if (newId) {
+                const curr = findCard(newId);
+                if (curr) {
+                    const isServer = curr.hasAttribute('data-server-song-id');
+                    curr.classList.add(
+                        'ring-1',
+                        isServer ? 'ring-blue-400/40' : 'ring-red-500/40',
+                        isServer ? 'bg-blue-400/5'   : 'bg-red-500/5',
+                        'is-active'
+                    );
+                    const dur = curr.querySelector('.song-duration');
+                    const wav = curr.querySelector('.song-waveform');
+                    if (dur) dur.classList.add('hidden');
+                    if (wav) { wav.classList.remove('hidden'); wav.classList.add('flex'); }
+                }
+            }
+        };
+
+        window.showCardOptions = (id, title, artist, thumbnail, genre, songType) => {
+            const el = document.querySelector('[x-data]');
+            if (window.Alpine) {
+                window.Alpine.$data(el).cardOptions = {
+                    show: true, id, title, artist, thumbnail,
+                    genre:    genre    || 'Sin categoría',
+                    songType: songType || 'local',
+                };
+            }
+        };
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js');
+            });
+        }
+
+        document.body.addEventListener('htmx:beforeRequest', function(evt) {
+            if (evt.detail.target.id === 'result-container') {
+                document.getElementById('result-container').innerHTML = '';
+            }
+        });
+    </script>
+
+    <!-- Sheet global de opciones para cards de la biblioteca -->
+    <div x-show="cardOptions.show"
+         @click.self="cardOptions.show = false"
+         class="fixed inset-0 z-[75] flex items-end bg-black/50"
+         x-transition:enter="transition duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition duration-200 ease-in"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         style="display:none;">
+        <div @click.stop
+             x-transition:enter="transition duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+             x-transition:enter-start="translate-y-full"
+             x-transition:enter-end="translate-y-0"
+             x-transition:leave="transition duration-200 ease-in"
+             x-transition:leave-start="translate-y-0"
+             x-transition:leave-end="translate-y-full"
+             class="w-full lg-overlay rounded-t-[32px] max-w-lg mx-auto">
+            <!-- Handle -->
+            <div class="flex justify-center pt-3 pb-1">
+                <div class="w-10 h-1 bg-white/20 rounded-full"></div>
+            </div>
+            <!-- Info de la canción -->
+            <div class="flex items-center gap-4 px-6 py-4 border-b border-white/5">
+                <img :src="cardOptions.thumbnail" class="w-14 h-14 rounded-2xl object-cover flex-shrink-0 shadow-lg"
+                     onerror="this.style.display='none'">
+                <div class="min-w-0">
+                    <div class="font-black text-sm truncate" x-text="cardOptions.title"></div>
+                    <div class="text-white/40 text-[11px] font-bold uppercase tracking-widest truncate mt-0.5" x-text="cardOptions.artist"></div>
+                </div>
+            </div>
+            <!-- Opciones -->
+            <div class="py-2">
+                <!-- Cambiar categoría — disponible para local y server -->
+                <button @click="openCategoryPicker()"
+                        class="w-full flex items-center gap-4 px-6 py-3.5 active:bg-white/5 transition-colors">
+                    <div class="w-10 h-10 rounded-2xl bg-white/6 border border-white/10 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-white/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/>
+                        </svg>
+                    </div>
+                    <div class="min-w-0 text-left">
+                        <span class="text-sm font-semibold text-white/80 block">Categoría</span>
+                        <span class="text-[11px] text-white/35 font-bold uppercase tracking-wider truncate block" x-text="cardOptions.genre"></span>
+                    </div>
+                    <svg class="w-4 h-4 text-white/25 ml-auto flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                    </svg>
+                </button>
+
+                <!-- Eliminar — local y servidor -->
+                <button @click="deleteCardSong()"
+                        class="w-full flex items-center gap-4 px-6 py-3.5 active:bg-red-500/10 transition-colors">
+                    <div class="w-10 h-10 rounded-2xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                    </div>
+                    <span class="text-sm font-semibold text-red-400"
+                          x-text="cardOptions.songType === 'server' ? 'Eliminar del servidor' : 'Eliminar de la biblioteca'">
+                    </span>
+                </button>
+            </div>
+            <!-- Cancelar -->
+            <div class="px-4 pb-8 pt-1">
+                <button @click="cardOptions.show = false"
+                        class="w-full py-4 rounded-2xl bg-white/5 text-white/40 text-sm font-bold active:bg-white/10 transition-colors">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Sheet: picker de categorías ── -->
+    <div x-show="categoryPicker.show"
+         @click.self="categoryPicker.show = false; categoryPicker.creating = false; categoryPicker.newName = ''"
+         class="fixed inset-0 z-[80] flex items-end bg-black/60"
+         x-transition:enter="transition duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition duration-200 ease-in"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         style="display:none;">
+        <div @click.stop
+             x-transition:enter="transition duration-350 ease-[cubic-bezier(0.32,0.72,0,1)]"
+             x-transition:enter-start="translate-y-full"
+             x-transition:enter-end="translate-y-0"
+             x-transition:leave="transition duration-200 ease-in"
+             x-transition:leave-start="translate-y-0"
+             x-transition:leave-end="translate-y-full"
+             class="w-full lg-overlay rounded-t-[32px] max-w-lg mx-auto">
+
+            <!-- Handle -->
+            <div class="flex justify-center pt-3 pb-2">
+                <div class="w-10 h-1 bg-white/20 rounded-full"></div>
+            </div>
+
+            <!-- Título + categoría actual -->
+            <div class="px-6 pb-4 border-b border-white/5">
+                <h3 class="font-black text-[17px] tracking-tight">Categoría</h3>
+                <p class="text-white/35 text-[11px] font-bold uppercase tracking-wider mt-0.5">
+                    Actual: <span class="text-white/55" x-text="categoryPicker.currentGenre"></span>
+                </p>
+            </div>
+
+            <!-- Pills de géneros existentes -->
+            <div class="px-5 pt-4 pb-2 flex flex-wrap gap-2">
+                <template x-for="g in categoryPicker.genres" :key="g">
+                    <button @click="assignCategory(g)"
+                            :class="g === categoryPicker.currentGenre
+                                ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                                : 'bg-white/5 text-white/55 border-white/10 hover:bg-white/10 hover:text-white/80'"
+                            class="px-4 py-2 rounded-full text-[12px] font-black border transition-all active:scale-95 flex items-center gap-1.5">
+                        <span x-text="g"></span>
+                        <svg x-show="g === categoryPicker.currentGenre" class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                        </svg>
+                    </button>
+                </template>
+            </div>
+
+            <!-- Crear nueva categoría -->
+            <div class="px-5 pb-5 pt-2">
+                <div x-show="!categoryPicker.creating">
+                    <button @click="categoryPicker.creating = true"
+                            class="w-full flex items-center gap-3 py-3 text-white/40 hover:text-white/65 transition-colors">
+                        <div class="w-8 h-8 rounded-xl crystal-glass flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                            </svg>
+                        </div>
+                        <span class="text-sm font-bold">Nueva categoría</span>
+                    </button>
+                </div>
+                <div x-show="categoryPicker.creating" class="flex gap-2">
+                    <div class="lg-input rounded-2xl flex-1 flex items-center gap-2 px-4 py-3">
+                        <svg class="w-4 h-4 text-white/30 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/>
+                        </svg>
+                        <input x-model="categoryPicker.newName"
+                               type="text"
+                               placeholder="Nombre de la categoría"
+                               @keydown.enter="createAndAssignCategory()"
+                               @keydown.escape="categoryPicker.creating = false; categoryPicker.newName = ''"
+                               x-effect="if (categoryPicker.creating) $nextTick(() => $el.focus())"
+                               class="bg-transparent text-white text-[14px] font-medium placeholder-white/25 outline-none w-full">
+                    </div>
+                    <button @click="createAndAssignCategory()"
+                            :disabled="!categoryPicker.newName.trim()"
+                            class="btn-lg-primary px-5 rounded-2xl font-black text-sm disabled:opacity-40 transition-opacity">
+                        OK
+                    </button>
+                </div>
+            </div>
+
+            <!-- Cancelar -->
+            <div class="px-4 pb-8">
+                <button @click="categoryPicker.show = false; categoryPicker.creating = false; categoryPicker.newName = ''"
+                        class="w-full py-4 rounded-2xl bg-white/5 text-white/40 text-sm font-bold active:bg-white/10 transition-colors">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

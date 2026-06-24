@@ -1,0 +1,66 @@
+<div class="animate-fade-in" x-init="loadLocalLibrary()">
+
+    <!-- Header con stats y acciones -->
+    <div class="flex justify-between items-center mb-5 px-1">
+        <div>
+            <h2 class="text-2xl font-black tracking-tight">Biblioteca</h2>
+            <p id="library-stats" class="text-white/30 text-[11px] font-bold uppercase tracking-widest mt-0.5">Cargando...</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <!-- Botón shuffle -->
+            <button onclick="shuffleLibrary()"
+                    title="Reproducción aleatoria"
+                    class="w-9 h-9 flex items-center justify-center crystal-glass rounded-xl text-white/35 hover:text-white/70 active:scale-90 transition-all">
+                <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 3h5v5M4 20 21 3M21 16v5h-5M4 4l7 7"/>
+                </svg>
+            </button>
+            <!-- Botón búsqueda -->
+            <button onclick="toggleLibrarySearch()"
+                    id="library-search-btn"
+                    title="Buscar en biblioteca"
+                    class="w-9 h-9 flex items-center justify-center crystal-glass rounded-xl text-white/35 hover:text-white/70 active:scale-90 transition-all">
+                <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Campo de búsqueda — oculto por defecto, desliza hacia abajo -->
+    <div id="library-search-wrapper">
+        <div class="lg-input rounded-[20px] flex items-center gap-3 px-4 py-3 mb-4">
+            <svg class="w-4 h-4 text-white/30 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"/>
+            </svg>
+            <input id="library-search-input"
+                   type="search"
+                   placeholder="Artista, título…"
+                   oninput="filterLibrary(this.value)"
+                   class="flex-1 bg-transparent text-white text-[15px] font-medium placeholder-white/25 outline-none"
+                   autocomplete="off"
+                   autocorrect="off"
+                   spellcheck="false">
+            <button onclick="clearLibrarySearch()"
+                    class="w-6 h-6 flex items-center justify-center text-white/25 hover:text-white/60 transition-colors flex-shrink-0">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Pills de filtro por categoría (rellenas por JS tras cargar canciones) -->
+    <div id="genre-pills-container" class="hidden gap-2 overflow-x-auto pb-2 mb-4 px-1" style="-ms-overflow-style:none;scrollbar-width:none;"></div>
+
+    <!-- Lista de canciones (rellena por app.js) -->
+    <div id="local-songs-container" class="grid grid-cols-1 gap-3 mb-20">
+        <div class="flex flex-col items-center justify-center py-20 opacity-20">
+            <svg class="animate-spin h-8 w-8 mb-4" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-xs font-black uppercase tracking-widest">Buscando archivos…</p>
+        </div>
+    </div>
+</div>

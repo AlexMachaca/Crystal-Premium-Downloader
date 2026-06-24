@@ -1,0 +1,146 @@
+<div class="animate-fade-in" x-init="checkServerSongsLocal()">
+
+    <!-- Encabezado -->
+    <div class="flex justify-between items-center mb-5 px-1">
+        <div>
+            <h2 class="text-2xl font-black tracking-tight">Online</h2>
+            <p class="text-white/30 text-[11px] font-bold uppercase tracking-widest mt-0.5">
+                {{ songs | length }} canción{{ 'es' if songs | length != 1 else '' }} · Servidor
+            </p>
+        </div>
+        <div class="flex items-center gap-2">
+            <!-- Badge en línea -->
+            <div class="flex items-center gap-1.5 crystal-glass px-3 py-1.5 rounded-full">
+                <div class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse"></div>
+                <span class="text-[10px] font-black text-white/40 uppercase tracking-widest">En línea</span>
+            </div>
+            <!-- Botón limpiar duplicados -->
+            <button onclick="cleanOnlineDuplicates(this)"
+                    title="Eliminar duplicados de la base de datos"
+                    class="w-9 h-9 flex items-center justify-center crystal-glass rounded-xl text-white/30 hover:text-red-400/70 active:scale-90 transition-all">
+                <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    {% if genres is defined and genres | length > 1 %}
+    <!-- Pills de filtro por categoría -->
+    <div class="flex gap-2 overflow-x-auto pb-2 mb-4 px-1" style="-ms-overflow-style:none;scrollbar-width:none;">
+        <button hx-get="/ui/online-library"
+                hx-target="#main-content"
+                hx-swap="innerHTML"
+                class="flex-shrink-0 px-4 py-[9px] rounded-full text-[11px] font-black uppercase tracking-[0.08em] border transition-all active:scale-95
+                       {% if current_genre == 'Todas' %}bg-blue-500/20 text-blue-300 border-blue-500/30{% else %}bg-white/5 text-white/40 border-white/10 hover:bg-white/10 hover:text-white/60{% endif %}">
+            Todas
+        </button>
+        {% for g in genres %}
+        <button hx-get="/ui/online-library?genre={{ g | urlencode }}"
+                hx-target="#main-content"
+                hx-swap="innerHTML"
+                class="flex-shrink-0 px-4 py-[9px] rounded-full text-[11px] font-black uppercase tracking-[0.08em] border transition-all active:scale-95 whitespace-nowrap
+                       {% if current_genre == g %}bg-blue-500/20 text-blue-300 border-blue-500/30{% else %}bg-white/5 text-white/40 border-white/10 hover:bg-white/10 hover:text-white/60{% endif %}">
+            {{ g }}
+        </button>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if not songs %}
+    <!-- Estado vacío -->
+    <div class="text-center py-24 animate-fade-in">
+        <div class="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-white/5">
+            <svg class="w-10 h-10 text-white/10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+        </div>
+        <p class="text-white/30 font-black uppercase tracking-[0.2em] text-xs">Sin canciones en el servidor.</p>
+        <p class="text-white/20 text-[11px] mt-2">Descarga una canción primero.</p>
+    </div>
+    {% else %}
+
+    <!-- Cola de canciones del servidor (para prev/next) -->
+    <div id="server-songs-container" class="grid grid-cols-1 gap-4 mb-20">
+        {% for song in songs %}
+        <div class="crystal-glass p-4 rounded-[28px] flex items-center gap-4 animate-fade-in group relative overflow-hidden"
+             data-server-song-id="{{ song.id }}"
+             data-song-title="{{ song.title | e }}"
+             data-song-artist="{{ song.artist | e }}">
+
+            <div class="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent pointer-events-none"></div>
+
+            <!-- Thumbnail + play overlay -->
+            <div class="relative w-16 h-16 flex-shrink-0 cursor-pointer"
+                 onclick="playServerSong({{ song.id }}, '{{ song.title | replace("'", "\\'") }}', '{{ song.artist | replace("'", "\\'") }}', '{{ song.thumbnail_url }}')">
+                {% if song.thumbnail_url %}
+                <img src="{{ song.thumbnail_url }}" class="w-full h-full object-cover rounded-2xl shadow-2xl">
+                {% else %}
+                <div class="w-full h-full bg-white/5 rounded-2xl flex items-center justify-center">
+                    <svg class="w-8 h-8 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+                    </svg>
+                </div>
+                {% endif %}
+                <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl">
+                    <div class="w-9 h-9 flex items-center justify-center bg-blue-500/80 backdrop-blur-md rounded-full border border-blue-400/30">
+                        <svg class="w-5 h-5 text-white fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                </div>
+                {% if not song.available %}
+                <div class="absolute inset-0 bg-black/60 rounded-2xl flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                    </svg>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Info -->
+            <div class="flex-grow min-w-0 cursor-pointer"
+                 onclick="playServerSong({{ song.id }}, '{{ song.title | replace("'", "\\'") }}', '{{ song.artist | replace("'", "\\'") }}', '{{ song.thumbnail_url }}')">
+                <h3 class="text-white text-[15px] font-black tracking-tight truncate leading-tight mb-0.5">{{ song.title }}</h3>
+                <p class="text-white/40 text-[11px] font-bold uppercase tracking-widest truncate">{{ song.artist }}</p>
+                <div class="flex items-center gap-2 mt-1">
+                    <span class="text-white/20 text-[10px] font-bold">{{ song.duration | default(0) // 60 }}:{{ '%02d' | format(song.duration | default(0) % 60) }}</span>
+                    <span class="server-saved-badge hidden text-[10px] font-black text-green-400/80 uppercase tracking-widest">· En dispositivo</span>
+                    {% if not song.available %}
+                    <span class="text-[10px] font-black text-red-400/60 uppercase tracking-widest">· Archivo no disponible</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Acciones -->
+            <div class="flex items-center gap-2 flex-shrink-0">
+                {% if song.available %}
+                <button class="server-save-btn btn-lg-secondary text-[11px] font-black uppercase tracking-wider px-3 py-2 rounded-2xl flex items-center gap-1.5 whitespace-nowrap"
+                        onclick="saveServerSongOffline(this, {{ song.id }}, '{{ song.title | replace("'", "\\'") }}', '{{ song.artist | replace("'", "\\'") }}', {{ song.duration or 0 }}, '{{ song.thumbnail_url }}')">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Guardar
+                </button>
+                {% else %}
+                <span class="text-[11px] font-black text-white/20 uppercase tracking-wider">Sin archivo</span>
+                {% endif %}
+
+                <!-- Tres puntos — abre sheet de opciones (categoría) -->
+                <button onclick="showCardOptions(
+                            {{ song.id }},
+                            '{{ song.title | replace("'", "\\'") }}',
+                            '{{ song.artist | replace("'", "\\'") }}',
+                            '{{ song.thumbnail_url }}',
+                            '{{ song.genre | default('Sin categoría') | replace("'", "\\'") }}',
+                            'server'
+                        )"
+                        class="w-8 h-8 flex items-center justify-center rounded-xl text-white/25 hover:text-white/60 hover:bg-white/8 active:bg-white/15 transition-all flex-shrink-0">
+                    <svg class="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24">
+                        <circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
