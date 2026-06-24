@@ -20,10 +20,18 @@ from core.database import create_db_and_tables, Song, get_session, select
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Lógica de inicio
     create_db_and_tables()
+    # Decodificar cookies de YouTube si se proveen via variable de entorno YOUTUBE_COOKIES_B64
+    yt_cookies_b64 = os.environ.get('YOUTUBE_COOKIES_B64', '')
+    if yt_cookies_b64:
+        import base64
+        try:
+            cookies_bytes = base64.b64decode(yt_cookies_b64)
+            with open('/tmp/yt_cookies.txt', 'wb') as f:
+                f.write(cookies_bytes)
+        except Exception:
+            pass
     yield
-    # Lógica de cierre (opcional)
 
 app = FastAPI(title="Downloader Premium", lifespan=lifespan)
 

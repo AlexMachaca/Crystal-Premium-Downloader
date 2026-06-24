@@ -50,10 +50,13 @@ class VideoDownloader:
             'noplaylist': True,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android_embedded', 'ios'],
+                    'player_client': ['ios', 'tv_embedded'],
                 }
             },
         }
+        cookies_file = '/tmp/yt_cookies.txt'
+        if os.path.exists(cookies_file):
+            ydl_opts['cookiefile'] = cookies_file
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             try:
@@ -107,10 +110,13 @@ class VideoDownloader:
             'restrictfilenames': False,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android_embedded', 'ios'],
+                    'player_client': ['ios', 'tv_embedded'],
                 }
             },
         }
+        cookies_file = '/tmp/yt_cookies.txt'
+        if os.path.exists(cookies_file):
+            ydl_opts['cookiefile'] = cookies_file
         
         if progress_hook:
             ydl_opts['progress_hooks'] = [progress_hook]
