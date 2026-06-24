@@ -63,6 +63,20 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             overflow-x: hidden;
         }
+        /* ── Safe area para notch / home indicator (iOS & Android) ── */
+        .tab-bar-safe {
+            bottom: max(2rem, env(safe-area-inset-bottom));
+        }
+        .mini-player-safe {
+            bottom: calc(max(2rem, env(safe-area-inset-bottom)) + 5rem);
+        }
+        /* ── Contenido no queda tapado por tab bar + mini player ── */
+        .content-safe-pad {
+            padding-bottom: calc(max(2rem, env(safe-area-inset-bottom)) + 8rem);
+        }
+        .content-safe-pad-player {
+            padding-bottom: calc(max(2rem, env(safe-area-inset-bottom)) + 13rem);
+        }
         /* ── Liquid Glass Tier 1 — superficie estándar (cards, panels) ── */
         .crystal-glass {
             background: var(--surface-base);
@@ -464,7 +478,7 @@
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col" :class="currentSong.id ? 'pb-56' : 'pb-32'" x-data="playerData()">
+<body class="min-h-screen flex flex-col" x-data="playerData()">
     
     <!-- Capa 1: Nebulosas decorativas animadas (estáticas en color, vivas en movimiento) -->
     <div class="fixed inset-0 pointer-events-none z-[-2] overflow-hidden">
@@ -495,7 +509,7 @@
     </nav>
 
     <!-- Main Content Area -->
-    <main id="main-content" class="flex-grow px-5 max-w-3xl mx-auto w-full pt-2">
+    <main id="main-content" class="flex-grow px-5 max-w-3xl mx-auto w-full pt-2 content-safe-pad">
         {% include 'download_view.html' %}
     </main>
 
@@ -504,7 +518,7 @@
          x-transition:enter="transition ease-out duration-400"
          x-transition:enter-start="opacity-0 translate-y-8 scale-95"
          x-transition:enter-end="opacity-100 translate-y-0 scale-100"
-         class="fixed bottom-28 left-5 right-5 z-50"
+         class="fixed mini-player-safe left-5 right-5 z-50"
          @click="expandPlayer = true">
         <div class="tab-bar-island px-3 py-2.5 rounded-2xl flex items-center gap-3 relative overflow-hidden">
             <!-- Artwork -->
@@ -548,7 +562,7 @@
     </div>
 
     <!-- Bottom Navigation Island -->
-    <div class="fixed bottom-8 left-0 right-0 z-50 px-5">
+    <div class="fixed tab-bar-safe left-0 right-0 z-50 px-5">
         <div class="tab-bar-island rounded-[32px] flex items-center p-2 max-w-sm mx-auto relative">
 
             <!-- Pill deslizante: indica el tab activo -->

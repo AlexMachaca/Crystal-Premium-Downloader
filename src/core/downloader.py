@@ -48,6 +48,11 @@ class VideoDownloader:
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android_embedded', 'ios'],
+                }
+            },
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -98,8 +103,13 @@ class VideoDownloader:
             'ffmpeg_location': self.ffmpeg_path,
             'noplaylist': True,
             'playlist_items': '1',
-            'writethumbnail': True, # Descargar miniatura
+            'writethumbnail': True,
             'restrictfilenames': False,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android_embedded', 'ios'],
+                }
+            },
         }
         
         if progress_hook:
