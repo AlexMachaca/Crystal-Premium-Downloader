@@ -43,6 +43,10 @@ class VideoDownloader:
         if not self.validate_url(url):
             return {"error": "URL no soportada o inválida."}
 
+        cookies_file = '/tmp/yt_cookies.txt'
+        has_cookies = os.path.exists(cookies_file)
+        # Con cookies: cliente web (devuelve todos los formatos normales).
+        # Sin cookies: ios/tv_embedded son más resistentes a bot-detection.
         ydl_opts = {
             'ffmpeg_location': self.ffmpeg_path,
             'quiet': True,
@@ -50,14 +54,13 @@ class VideoDownloader:
             'noplaylist': True,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['ios', 'tv_embedded'],
+                    'player_client': ['web'] if has_cookies else ['ios', 'tv_embedded'],
                 }
             },
         }
-        cookies_file = '/tmp/yt_cookies.txt'
-        if os.path.exists(cookies_file):
+        if has_cookies:
             ydl_opts['cookiefile'] = cookies_file
-        
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             try:
                 info = ydl.extract_info(url, download=False)
@@ -101,6 +104,8 @@ class VideoDownloader:
             
         output_template = os.path.join(self.download_path, filename_format)
         
+        dl_cookies_file = '/tmp/yt_cookies.txt'
+        dl_has_cookies = os.path.exists(dl_cookies_file)
         ydl_opts = {
             'outtmpl': output_template,
             'ffmpeg_location': self.ffmpeg_path,
@@ -110,14 +115,13 @@ class VideoDownloader:
             'restrictfilenames': False,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['ios', 'tv_embedded'],
+                    'player_client': ['web'] if dl_has_cookies else ['ios', 'tv_embedded'],
                 }
             },
         }
-        cookies_file = '/tmp/yt_cookies.txt'
-        if os.path.exists(cookies_file):
-            ydl_opts['cookiefile'] = cookies_file
-        
+        if dl_has_cookies:
+            ydl_opts['cookiefile'] = dl_cookies_file
+
         if progress_hook:
             ydl_opts['progress_hooks'] = [progress_hook]
         if postprocessor_hook:
