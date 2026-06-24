@@ -45,8 +45,8 @@ class VideoDownloader:
 
         cookies_file = '/tmp/yt_cookies.txt'
         has_cookies = os.path.exists(cookies_file)
-        # Con cookies: cliente web (devuelve todos los formatos normales).
-        # Sin cookies: ios/tv_embedded son más resistentes a bot-detection.
+        client = 'web' if has_cookies else 'ios+tv_embedded'
+        print(f"[yt-dlp] get_info — cookies={'SI' if has_cookies else 'NO'}, client={client}")
         ydl_opts = {
             'ffmpeg_location': self.ffmpeg_path,
             'quiet': True,

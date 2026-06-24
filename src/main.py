@@ -21,16 +21,20 @@ from core.database import create_db_and_tables, Song, get_session, select
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
-    # Decodificar cookies de YouTube si se proveen via variable de entorno YOUTUBE_COOKIES_B64
-    yt_cookies_b64 = os.environ.get('YOUTUBE_COOKIES_B64', '')
+    import base64
+    yt_cookies_b64 = os.environ.get('YOUTUBE_COOKIES_B64', '').strip()
     if yt_cookies_b64:
-        import base64
         try:
-            cookies_bytes = base64.b64decode(yt_cookies_b64)
+            # Eliminar saltos de línea que algunos editores añaden al copiar
+            clean_b64 = yt_cookies_b64.replace('\n', '').replace('\r', '').replace(' ', '')
+            cookies_bytes = base64.b64decode(clean_b64 + '==')  # padding extra es inofensivo
             with open('/tmp/yt_cookies.txt', 'wb') as f:
                 f.write(cookies_bytes)
-        except Exception:
-            pass
+            print(f"[cookies] Archivo creado: {len(cookies_bytes)} bytes")
+        except Exception as e:
+            print(f"[cookies] ERROR al decodificar YOUTUBE_COOKIES_B64: {e}")
+    else:
+        print("[cookies] Variable YOUTUBE_COOKIES_B64 no configurada — se usarán clientes alternativos")
     yield
 
 app = FastAPI(title="Downloader Premium", lifespan=lifespan)
@@ -75,9 +79,14 @@ async def favicon():
 
 @app.get("/health", include_in_schema=False)
 async def health():
-    """Endpoint para servicios de monitoreo (UptimeRobot, cron-job.org).
-    Mantiene el servidor activo en Render free tier."""
-    return {"status": "ok"}
+    """Endpoint para servicios de monitoreo. También muestra estado de cookies."""
+    cookies_ok = os.path.exists('/tmp/yt_cookies.txt')
+    cookies_size = os.path.getsize('/tmp/yt_cookies.txt') if cookies_ok else 0
+    return {
+        "status": "ok",
+        "yt_cookies": "active" if cookies_ok else "not configured",
+        "yt_cookies_bytes": cookies_size,
+    }
 
 def format_duration(seconds):
     if not seconds: return "N/A"
